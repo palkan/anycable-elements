@@ -25,7 +25,9 @@ export class AnyCableLogsElement extends LitElement {
     this.filter = '';
     this.linesCount = 0;
     this.lines = [];
+
     this._handleMessage = this._handleMessage.bind(this);
+    this._filterAlike = this._filterAlike.bind(this);
   }
 
   connectedCallback() {
@@ -60,10 +62,14 @@ export class AnyCableLogsElement extends LitElement {
     source.addEventListener('reject_subscription', this._handleMessage);
     source.addEventListener('ping', this._handleMessage);
     source.onmessage = this._handleMessage;
+    
+    this.renderRoot.addEventListener('click', this._filterAlike);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+
+    this.renderRoot.removeEventListener('click', this._filterAlike);
 
     if (this.source) {
       this.source.close();
@@ -144,7 +150,29 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   _onFilterChange(e) {
-    this.filter = e.target.value;
+    this._filter(e.target.value);
+  }
+
+  _filterAlike(e) {
+    if (e.target.classList.contains('log-filter')) {
+      e.preventDefault();
+
+      const val = e.target.textContent;
+
+      const filterEl = this.renderRoot.getElementById("filter");
+      this._filter(val);
+      filterEl.value = val;
+    }
+  }
+
+  _resetFilter(){
+    const filterEl = this.renderRoot.getElementById("filter");
+    this._filter("");
+    filterEl.value = "";
+  }
+
+  _filter(query) {
+    this.filter = query;
 
     if (this.filter) {
       this.filterRx = new RegExp(`((?:^|>)[^<>]*?)(${this.filter})`, 'gim');
@@ -219,7 +247,7 @@ export class AnyCableLogsElement extends LitElement {
     }
 
     if (data['level']) {
-      level = html`[<span class="log-level-${data[
+      level = html`[<span class="log-filter log-level-${data[
         'level'
       ].toLowerCase()}">${this._highlight(data['level'])}</span>]`;
       delete data['level'];
@@ -239,7 +267,8 @@ export class AnyCableLogsElement extends LitElement {
         val = JSON.stringify(val);
       }
 
-      buf.push(`${attr}=${val}`);
+      const attrval = `${attr}=${val}`;
+      buf.push(`<span class="log-filter">${attrval}</span>`);
     }
 
     return html`<li>${ts} ${level} ${message} ${this._highlight(
@@ -248,7 +277,7 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   _highlight(str) {
-    if (!this.filter) return str;
+    if (!this.filter) return unsafeHTML(str);
 
     return unsafeHTML(str.replace(this.filterRx, '$1<mark>$2</mark>'));
   }
@@ -292,12 +321,17 @@ export class AnyCableLogsElement extends LitElement {
     return html`
       <span class="status ${this.reconnecting ? 'status-loading' : ''}" @animationend=${this._clearStatusAnimation}></span>
       <nav>
-        <i>
+        <i id="filter-icon">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
           </svg>
         </i>
         <input type="text" id="filter" @input=${this._onFilterChange}/>
+        <i id="reset-filter-icon" @click=${this._resetFilter} title="reset filter" style="${!this.filter && 'display: none;'}">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75 14.25 12m0 0 2.25 2.25M14.25 12l2.25-2.25M14.25 12 12 14.25m-2.58 4.92-6.374-6.375a1.125 1.125 0 0 1 0-1.59L9.42 4.83c.21-.211.497-.33.795-.33H19.5a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25h-9.284c-.298 0-.585-.119-.795-.33Z" />
+          </svg>
+        </i>
       </nav>
       <ul class="console">
         ${repeat(
@@ -357,6 +391,14 @@ export class AnyCableLogsElement extends LitElement {
       .log-level-warn {
         color: #FFBF00;
       }
+
+      .log-filter {
+        cursor: pointer;
+      }
+
+      .log-filter:hover {
+        text-decoration: underline;
+      }
       
       @keyframes status-blink {
         0% {opacity: 1;}
@@ -400,11 +442,25 @@ export class AnyCableLogsElement extends LitElement {
 
       nav i {
         position: absolute;
-        left: -1.25rem;
-        top: 0.125rem;
         width: 1rem;
         height: 1rem;
         color: #fff;
+      }
+
+      #filter-icon {
+        left: -1.25rem;
+        top: 0.125rem;
+      }
+
+      #reset-filter-icon {
+        right: -0.5rem;
+        top: 0.125rem;
+        cursor: pointer;
+        transition: color 0.5s ease;
+      }
+
+      #reset-filter-icon:hover {
+        color: var(--console-color, rgb(134 239 172));
       }
 
       nav input {
