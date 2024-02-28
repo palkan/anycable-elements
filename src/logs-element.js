@@ -21,6 +21,7 @@ export class AnyCableLogsElement extends LitElement {
   constructor() {
     super();
     this.connected = false;
+    this.reconnecting = false;
     this.filter = '';
     this.linesCount = 0;
     this.lines = [];
@@ -33,12 +34,14 @@ export class AnyCableLogsElement extends LitElement {
 
     source.onopen = () => {
       this.connected = true;
+      this.reconnecting = false;
       this.error = null;
       this.requestUpdate();
     };
 
     source.onerror = () => {
       if (this.connected) {
+        this.reconnecting = true;
         this._append(
           JSON.stringify({
             level: 'ERROR',
@@ -287,7 +290,7 @@ export class AnyCableLogsElement extends LitElement {
     }
 
     return html`
-      <span class="status" @animationend=${this._clearStatusAnimation}></span>
+      <span class="status ${this.reconnecting ? 'status-loading' : ''}" @animationend=${this._clearStatusAnimation}></span>
       <nav>
         <i>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -367,11 +370,11 @@ export class AnyCableLogsElement extends LitElement {
 
       .status-loading {
         animation: status-blink 2s linear infinite;
-        background-color: #FFBF00;
+        background-color: #FFBF00 !important;
       }
 
       .status-error {
-        background-color: red;
+        background-color: red !important;
       }
 
       .status {
