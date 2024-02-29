@@ -1,6 +1,31 @@
-import { LitElement, css, html } from 'lit';
-import { repeat } from 'lit/directives/repeat.js';
-import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { LitElement, css, html } from "lit";
+import { repeat } from "lit/directives/repeat.js";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
+
+const RESERVED_ATTRS = ["time", "level", "msg"];
+
+const flatten = (data, acc = {}, prefix = "") => {
+  if (typeof data !== "object") {
+    if (prefix) return acc;
+    // Original input is not an object
+    return data;
+  }
+
+  const keyPrefix = prefix ? `${prefix}.` : "";
+
+  for (let key in data) {
+    const val = data[key];
+    if (!val) continue;
+
+    if (typeof val === "object") {
+      flatten(val, acc, keyPrefix + key);
+    } else {
+      acc[keyPrefix + key] = val;
+    }
+  }
+
+  return acc;
+};
 
 /**
  * An example element.
@@ -22,7 +47,7 @@ export class AnyCableLogsElement extends LitElement {
     super();
     this.connected = false;
     this.reconnecting = false;
-    this.filter = '';
+    this.filter = "";
     this.linesCount = 0;
     this.lines = [];
 
@@ -46,30 +71,30 @@ export class AnyCableLogsElement extends LitElement {
         this.reconnecting = true;
         this._append(
           JSON.stringify({
-            level: 'ERROR',
-            msg: 'connection lost',
+            level: "ERROR",
+            msg: "connection lost",
           })
         );
       } else {
-        this.error = new Error('failed to connect to event source');
+        this.error = new Error("failed to connect to event source");
       }
       this.requestUpdate();
     };
 
-    source.addEventListener('welcome', this._handleMessage);
-    source.addEventListener('disconnect', this._handleMessage);
-    source.addEventListener('confirm_subscription', this._handleMessage);
-    source.addEventListener('reject_subscription', this._handleMessage);
-    source.addEventListener('ping', this._handleMessage);
+    source.addEventListener("welcome", this._handleMessage);
+    source.addEventListener("disconnect", this._handleMessage);
+    source.addEventListener("confirm_subscription", this._handleMessage);
+    source.addEventListener("reject_subscription", this._handleMessage);
+    source.addEventListener("ping", this._handleMessage);
     source.onmessage = this._handleMessage;
-    
-    this.renderRoot.addEventListener('click', this._filterAlike);
+
+    this.renderRoot.addEventListener("click", this._filterAlike);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
 
-    this.renderRoot.removeEventListener('click', this._filterAlike);
+    this.renderRoot.removeEventListener("click", this._filterAlike);
 
     if (this.source) {
       this.source.close();
@@ -78,39 +103,39 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   _handleMessage(msg) {
-    if (msg.type === 'ping') {
+    if (msg.type === "ping") {
       this._animateStatus();
       return;
     }
 
-    if (msg.type === 'welcome') {
+    if (msg.type === "welcome") {
       this._append(
         JSON.stringify({
-          level: 'DEBUG',
-          msg: 'connected',
+          level: "DEBUG",
+          msg: "connected",
         })
       );
       this.requestUpdate();
       return;
     }
 
-    if (msg.type === 'confirm_subscription') {
+    if (msg.type === "confirm_subscription") {
       this._append(
         JSON.stringify({
-          level: 'DEBUG',
-          msg: 'subscribed',
+          level: "DEBUG",
+          msg: "subscribed",
         })
       );
       this.requestUpdate();
       return;
     }
 
-    if (msg.type === 'disconnect') {
+    if (msg.type === "disconnect") {
       let { reason } = JSON.parse(msg.data);
       this._append(
         JSON.stringify({
-          level: 'ERROR',
-          msg: 'connection closed by server',
+          level: "ERROR",
+          msg: "connection closed by server",
           reason,
         })
       );
@@ -122,7 +147,7 @@ export class AnyCableLogsElement extends LitElement {
 
     for (let line of lines) this._append(JSON.stringify(line));
 
-    const consoleEl = this.renderRoot.querySelector('.console');
+    const consoleEl = this.renderRoot.querySelector(".console");
     this.shouldScroll =
       consoleEl.scrollTop + consoleEl.offsetHeight + 10 >
       consoleEl.scrollHeight;
@@ -136,6 +161,15 @@ export class AnyCableLogsElement extends LitElement {
 
   _append(data) {
     if (!data) return;
+
+    try {
+      data = JSON.parse(data);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+
+    data = flatten(data);
 
     this.linesCount++;
     this.lines.push({ data, raw: this._compileLog(data), id: this.linesCount });
@@ -154,7 +188,7 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   _filterAlike(e) {
-    if (e.target.classList.contains('log-filter')) {
+    if (e.target.classList.contains("log-filter")) {
       e.preventDefault();
 
       const val = e.target.textContent;
@@ -165,7 +199,7 @@ export class AnyCableLogsElement extends LitElement {
     }
   }
 
-  _resetFilter(){
+  _resetFilter() {
     const filterEl = this.renderRoot.getElementById("filter");
     this._filter("");
     filterEl.value = "";
@@ -175,7 +209,7 @@ export class AnyCableLogsElement extends LitElement {
     this.filter = query;
 
     if (this.filter) {
-      this.filterRx = new RegExp(`((?:^|>)[^<>]*?)(${this.filter})`, 'gim');
+      this.filterRx = new RegExp(`((?:^|>)[^<>]*?)(${this.filter})`, "gim");
     }
 
     // Always scroll after filtering
@@ -183,87 +217,50 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   // Generate a string representation of a log for filtering purposes
-  _compileLog(line) {
-    let data;
-
-    try {
-      data = JSON.parse(line);
-    } catch {
-      return line;
-    }
-
-    let ts;
-    let level;
-    let message;
+  _compileLog(data) {
+    let ts = data["time"];
+    let level = data["level"];
+    let message = data["msg"];
 
     let buf = [];
 
-    if (data['time']) {
-      ts = data['time'];
-      delete data['time'];
-    }
-
-    if (data['level']) {
-      level = data['level'];
-      delete data['level'];
-    }
-
-    if (data['msg']) {
-      message = data['msg'];
-      delete data['msg'];
-    }
-
     for (let attr in data) {
+      if (RESERVED_ATTRS.includes(attr)) continue;
+
       let val = data[attr];
 
-      if (typeof val === 'object') {
+      if (!val) continue;
+
+      if (typeof val === "object") {
         val = JSON.stringify(val);
       }
 
       buf.push(`${attr}=${val}`);
     }
 
-    return `${ts} ${level} ${message} ${buf.join(' ')}`;
+    return `${ts} ${level} ${message} ${buf.join(" ")}`;
   }
 
-  _formatLog(line) {
-    let data;
+  _formatLog(data) {
+    let ts = html`<span class="log-ts">${this._highlight(data["time"])}</span>`;
+    let level = html`[<span class="log-filter log-level-${data[
+      "level"
+    ].toLowerCase()}">${this._highlight(data["level"])}</span>]`;
 
-    try {
-      data = JSON.parse(line);
-    } catch {
-      return html`<li>${line}</li>`;
-    }
-
-    let ts;
-    let level;
-    let message;
+    let message = html`<span class="log-message">${this._highlight(
+      data["msg"]
+    )}</span>`;
 
     let buf = [];
 
-    if (data['time']) {
-      ts = html`<span class="log-ts">${this._highlight(data['time'])}</span>`;
-      delete data['time'];
-    }
-
-    if (data['level']) {
-      level = html`[<span class="log-filter log-level-${data[
-        'level'
-      ].toLowerCase()}">${this._highlight(data['level'])}</span>]`;
-      delete data['level'];
-    }
-
-    if (data['msg']) {
-      message = html`<span class="log-message">${this._highlight(
-        data['msg']
-      )}</span>`;
-      delete data['msg'];
-    }
-
     for (let attr in data) {
+      if (RESERVED_ATTRS.includes(attr)) continue;
+
       let val = data[attr];
 
-      if (typeof val === 'object') {
+      if (!val) continue;
+
+      if (typeof val === "object") {
         val = JSON.stringify(val);
       }
 
@@ -272,30 +269,30 @@ export class AnyCableLogsElement extends LitElement {
     }
 
     return html`<li>${ts} ${level} ${message} ${this._highlight(
-      buf.join(' ')
+      buf.join(" ")
     )}</li>`;
   }
 
   _highlight(str) {
     if (!this.filter) return unsafeHTML(str);
 
-    return unsafeHTML(str.replace(this.filterRx, '$1<mark>$2</mark>'));
+    return unsafeHTML(str.replace(this.filterRx, "$1<mark>$2</mark>"));
   }
 
   _animateStatus() {
-    const el = this.renderRoot.querySelector('.status');
+    const el = this.renderRoot.querySelector(".status");
 
     if (!el) return;
 
-    el.classList.add('status-animated');
+    el.classList.add("status-animated");
   }
 
   _clearStatusAnimation() {
-    const el = this.renderRoot.querySelector('.status');
+    const el = this.renderRoot.querySelector(".status");
 
     if (!el) return;
 
-    el.classList.remove('status-animated');
+    el.classList.remove("status-animated");
   }
 
   updated() {
@@ -304,7 +301,7 @@ export class AnyCableLogsElement extends LitElement {
     if (this.shouldScroll) {
       this.shouldScroll = false;
 
-      const consoleEl = this.renderRoot.querySelector('.console');
+      const consoleEl = this.renderRoot.querySelector(".console");
       consoleEl.scrollTop = consoleEl.scrollHeight - consoleEl.offsetHeight;
     }
   }
@@ -319,7 +316,9 @@ export class AnyCableLogsElement extends LitElement {
     }
 
     return html`
-      <span class="status ${this.reconnecting ? 'status-loading' : ''}" @animationend=${this._clearStatusAnimation}></span>
+      <span class="status ${
+        this.reconnecting ? "status-loading" : ""
+      }" @animationend=${this._clearStatusAnimation}></span>
       <nav>
         <i id="filter-icon">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -327,7 +326,9 @@ export class AnyCableLogsElement extends LitElement {
           </svg>
         </i>
         <input type="text" id="filter" @input=${this._onFilterChange}/>
-        <i id="reset-filter-icon" @click=${this._resetFilter} title="reset filter" style="${!this.filter && 'display: none;'}">
+        <i id="reset-filter-icon" @click=${
+          this._resetFilter
+        } title="reset filter" style="${!this.filter && "display: none;"}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75 14.25 12m0 0 2.25 2.25M14.25 12l2.25-2.25M14.25 12 12 14.25m-2.58 4.92-6.374-6.375a1.125 1.125 0 0 1 0-1.59L9.42 4.83c.21-.211.497-.33.795-.33H19.5a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25h-9.284c-.298 0-.585-.119-.795-.33Z" />
           </svg>
@@ -485,4 +486,4 @@ export class AnyCableLogsElement extends LitElement {
   }
 }
 
-window.customElements.define('anycable-logs', AnyCableLogsElement);
+window.customElements.define("anycable-logs", AnyCableLogsElement);
