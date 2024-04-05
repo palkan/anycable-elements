@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { minireset } from "minireset.css/minireset.css.lit.js";
 
 const RESERVED_ATTRS = ["time", "level", "msg"];
 
@@ -345,7 +346,9 @@ export class AnyCableLogsElement extends LitElement {
   }
 
   static get styles() {
-    return css`
+    return [
+      minireset,
+      css`
       :host {
         max-width: 1280px;
         height: 100%;
@@ -400,13 +403,13 @@ export class AnyCableLogsElement extends LitElement {
       .log-filter:hover {
         text-decoration: underline;
       }
-      
+
       @keyframes status-blink {
         0% {opacity: 1;}
         50% {opacity: 0.5;}
         100% {opacity: 1;}
       }
-      
+
       .status-animated {
         animation: status-blink 1s linear;
       }
@@ -482,7 +485,8 @@ export class AnyCableLogsElement extends LitElement {
 
       @media (prefers-color-scheme: light) {
       }
-    `;
+    `,
+    ];
   }
 }
 
