@@ -15,6 +15,7 @@
       }
     </style>
     <script type="module" src="/src/index.js"></script>
+    <script type="module" src="/src/cursors-element.js"></script>
   </head>
   <body>
     <div style="width: 100%; height: 400px; padding: 1rem">
@@ -22,6 +23,11 @@
         url="https://camp-cable-kjo0.fly.dev/_high_voltage_/events?identifier=logs"
       >
       </anycable-logs>
+
+      <anycable-cursors
+        url="wss://stackblitz-demo-sx9f.fly.dev/cable"
+        stream-name="live-cursors-demo"
+      ></anycable-cursors>
     </div>
   </body>
 </html>

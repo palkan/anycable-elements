@@ -1,10 +1,11 @@
 {
   "name": "anycable-elements",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "main": "src/index.js",
   "type": "module",
   "exports": {
     ".": "./src/index.js",
+    "./cursors-element": "./src/cursors-element.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -13,10 +14,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@github/mini-throttle": "^2.1.1",
+    "apcach": "^0.6.4",
     "lit": "^3.1.2",
     "minireset.css": "^0.0.7"
   },
+  "peerDependencies": {
+    "@anycable/core": ">= 0.8.2",
+    "@anycable/web": ">= 0.8.0"
+  },
   "devDependencies": {
+    "@anycable/core": ">= 0.8.2",
+    "@anycable/web": ">= 0.8.0",
     "vite": "^5.1.4"
   }
 }
