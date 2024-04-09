@@ -146,6 +146,19 @@ export class AnyCableCursorsElement extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.connect();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.disconnect();
+  }
+
+  connect() {
+    if (this.connected) return;
+
+    this.connected = true;
+
     this.cable = createCable(this.url);
 
     if (this.streamName) {
@@ -155,23 +168,23 @@ export class AnyCableCursorsElement extends LitElement {
     }
 
     this.channel.on("connect", () => {
-      this.connected = true;
       this._start();
     });
 
     this.channel.on("disconnect", () => {
-      this.connected = false;
       this._stop();
     });
 
     this.channel.on("message", this._handleMessage);
   }
 
-  disconnectedCallback() {
-    super.disconnectedCallback();
-
+  disconnect() {
     if (this.cable) {
       this.cable.disconnect();
+      for (const id in this.cursors) {
+        const cursor = this.cursors[id];
+        cursor.die();
+      }
       this.cursors = {};
       this.connected = false;
     }
@@ -183,7 +196,6 @@ export class AnyCableCursorsElement extends LitElement {
 
   _stop() {
     document.removeEventListener("mousemove", this._handleMove);
-    this._cursor.die();
   }
 
   _createCursor(id, color) {
