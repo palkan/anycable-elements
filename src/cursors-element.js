@@ -78,9 +78,10 @@ const pathLocator = (path) => {
 };
 
 class Cursor {
-  constructor(id, el) {
+  constructor(id, el, ttl = 10000) {
     this.id = id;
     this.el = el;
+    this.ttl = ttl;
   }
 
   keepalive(location) {
@@ -102,7 +103,7 @@ class Cursor {
   }
 
   get expired() {
-    return Date.now() - this.deadline > 2000;
+    return Date.now() - this.deadline > this.ttl;
   }
 
   die() {
@@ -117,6 +118,14 @@ export class AnyCableCursorsElement extends LitElement {
 
   constructor() {
     super();
+    let ttl = this.getAttribute("ttl");
+
+    if (ttl) {
+      this.ttl = parseInt(ttl);
+    } else {
+      this.ttl = 10000;
+    }
+
     this.userId = this.getAttribute("user-id") || nanoid();
     this.color = this.getAttribute("color") || getRandomColor();
     this.url = this.getAttribute("url");
@@ -189,7 +198,8 @@ export class AnyCableCursorsElement extends LitElement {
 
     const cursor = new Cursor(
       id,
-      this.renderRoot.getElementById(`cursor-${id}`)
+      this.renderRoot.getElementById(`cursor-${id}`),
+      this.ttl
     );
     return cursor;
   }
