@@ -291,14 +291,11 @@ export class AnyCableCursorsElement extends LitElement {
   static get styles() {
     return css`
       :host {
-        height: 0;
-        margin: 0;
-        overflow: visible;
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
+        inset: 0;
         z-index: 10000;
+        overflow: hidden;
+        pointer-events: none;
       }
 
 
