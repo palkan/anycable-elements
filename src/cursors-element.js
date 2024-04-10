@@ -95,8 +95,8 @@ class Cursor {
 
     // console.log(path, el, rect, x, y);
 
-    const newX = rect.left + x;
-    const newY = rect.top + y;
+    const newX = rect.left + x * rect.width;
+    const newY = rect.top + y * rect.height;
 
     this.el.style.transform = `translate(${newX}px, ${newY}px)`;
     this.deadline = Date.now();
@@ -219,8 +219,8 @@ export class AnyCableCursorsElement extends LitElement {
   _handleMove(e) {
     const composedPath = e.composedPath();
     const rect = composedPath[0].getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
     const path = pathSelector(composedPath);
 
     // console.log(path, x, y);
