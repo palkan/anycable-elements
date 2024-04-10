@@ -1,6 +1,6 @@
 {
   "name": "anycable-elements",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "main": "src/index.js",
   "type": "module",
   "exports": {
@@ -17,7 +17,8 @@
     "@github/mini-throttle": "^2.1.1",
     "apcach": "^0.6.4",
     "lit": "^3.1.2",
-    "minireset.css": "^0.0.7"
+    "minireset.css": "^0.0.7",
+    "perfect-cursors": "^1.0.5"
   },
   "peerDependencies": {
     "@anycable/core": ">= 0.8.2",

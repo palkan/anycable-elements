@@ -1,8 +1,9 @@
 import { LitElement, css, html } from "lit";
 import { createCable } from "@anycable/web";
-import { debounce } from "@github/mini-throttle";
+import { throttle } from "@github/mini-throttle";
 import { nanoid } from "nanoid";
 import { apcach, maxChroma, apcachToCss } from "apcach";
+import { PerfectCursor } from "perfect-cursors";
 
 function getRandomColor() {
   let hue = Math.random() * 360;
@@ -82,6 +83,7 @@ class Cursor {
     this.id = id;
     this.el = el;
     this.ttl = ttl;
+    this.pc = new PerfectCursor(this.update.bind(this));
   }
 
   keepalive(location) {
@@ -98,8 +100,15 @@ class Cursor {
     const newX = rect.left + x * rect.width;
     const newY = rect.top + y * rect.height;
 
-    this.el.style.transform = `translate(${newX}px, ${newY}px)`;
     this.deadline = Date.now();
+    this.pc.addPoint([newX, newY]);
+  }
+
+  update(point) {
+    this.el.style.setProperty(
+      "transform",
+      `translate(${point[0]}px, ${point[1]}px)`
+    );
   }
 
   get expired() {
@@ -108,6 +117,7 @@ class Cursor {
 
   die() {
     this.el.remove();
+    this.pc.dispose();
   }
 }
 
@@ -136,11 +146,10 @@ export class AnyCableCursorsElement extends LitElement {
     this.connected = false;
     this.cursors = {};
     this._handleMessage = this._handleMessage.bind(this);
+    this._handleMove = this._handleMove.bind(this);
 
     if (this.throttle) {
-      this._handleMove = debounce(this._handleMove.bind(this), this.throttle);
-    } else {
-      this._handleMove = this._handleMove.bind(this);
+      this._whisperMove = throttle(this._whisperMove.bind(this), this.throttle);
     }
   }
 
@@ -227,6 +236,10 @@ export class AnyCableCursorsElement extends LitElement {
 
     const location = { path, x, y };
 
+    this._whisperMove(location);
+  }
+
+  _whisperMove(location) {
     this.channel.whisper({
       event: "move",
       id: this.userId,
@@ -296,10 +309,6 @@ export class AnyCableCursorsElement extends LitElement {
         z-index: 10000;
         overflow: hidden;
         pointer-events: none;
-      }
-
-      .cursor {
-        transition: transform 50ms ease-in;
       }
 
       @media (prefers-color-scheme: light) {
