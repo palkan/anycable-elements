@@ -95,8 +95,8 @@ class Cursor {
 
     // console.log(path, el, rect, x, y);
 
-    const newX = document.documentElement.scrollLeft + rect.left + x;
-    const newY = document.documentElement.scrollTop + rect.top + y;
+    const newX = rect.left + x;
+    const newY = rect.top + y;
 
     this.el.style.transform = `translate(${newX}px, ${newY}px)`;
     this.deadline = Date.now();
@@ -291,7 +291,7 @@ export class AnyCableCursorsElement extends LitElement {
   static get styles() {
     return css`
       :host {
-        position: absolute;
+        position: fixed;
         inset: 0;
         z-index: 10000;
         overflow: hidden;
