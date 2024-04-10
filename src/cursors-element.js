@@ -298,6 +298,9 @@ export class AnyCableCursorsElement extends LitElement {
         pointer-events: none;
       }
 
+      .cursor {
+        transition: transform 50ms ease-in;
+      }
 
       @media (prefers-color-scheme: light) {
       }
