@@ -6,9 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AnyCable Elements</title>
     <style>
+      /* AnyCable+ font (Stem Text); the widget picks it up via --font-sans or the fallback stack */
+      @font-face {
+        font-weight: 400;
+        font-style: normal;
+        font-family: "Stem Text";
+        src: url("https://cdn.evilmartians.com/front/fonts/subset-StemText-Regular.woff2") format("woff2");
+      }
+
+      @font-face {
+        font-weight: 700;
+        font-style: normal;
+        font-family: "Stem Text";
+        src: url("https://cdn.evilmartians.com/front/fonts/subset-StemText-Bold.woff2") format("woff2");
+      }
+
       body {
         margin: 0;
         display: flex;
+        flex-direction: column;
         place-items: center;
         min-width: 320px;
         min-height: 100vh;
@@ -18,6 +34,46 @@
     <script type="module" src="/src/cursors-element.js"></script>
   </head>
   <body>
+    <div style="width: 100%; max-width: 1280px; padding: 1rem; box-sizing: border-box">
+      <anycable-metrics window="1h">
+        <h2>Overview</h2>
+        <anycable-metrics-chart heading="Clients" type="number" metrics="clients_num"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Memory" type="number" metrics="mem_sys_bytes" format="bytes"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Broadcasts" type="number" metrics="broadcast_msg_total"></anycable-metrics-chart>
+
+        <h2>Clients</h2>
+        <anycable-metrics-chart heading="Connected Clients" metrics="clients_num,clients_uniq_num" labels="Total,Unique"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Active Streams" metrics="broadcast_streams_num" labels="Active streams"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Disconnect Queue" metrics="disconnect_queue_size" labels="Disconnect queue"></anycable-metrics-chart>
+
+        <h2>Messages</h2>
+        <anycable-metrics-chart heading="Client Messages (received)" metrics="client_msg_total,failed_client_msg_total" labels="Received from clients,Unrecognized"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Server Messages (sent)" metrics="server_msg_total,failed_server_msg_total,timeout_server_msg_total" labels="Sent to clients,Failed to send,Write timeouts"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Data Throughput" type="area" format="bytes" metrics="data_sent_total,data_rcvd_total" labels="Sent,Received"></anycable-metrics-chart>
+
+        <h2>Publications &amp; Broadcasts</h2>
+        <anycable-metrics-chart heading="Publications (from app)" metrics="publications_total,failed_broadcast_msg_total" labels="Publications,Unknown"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Broadcasts (to clients)" metrics="broadcast_msg_total" labels="Broadcasts"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Remote Commands" metrics="remote_commands_total" labels="Remote commands"></anycable-metrics-chart>
+
+        <h2>RPC</h2>
+        <anycable-metrics-chart heading="RPC Calls" metrics="rpc_call_total,rpc_retries_total" labels="Calls,Retries"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="RPC Errors" metrics="rpc_error_total,rpc_timeout_total,rpc_canceled_total" labels="Errors,Timeouts,Canceled"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="RPC Pending" metrics="rpc_pending_num" labels="Pending"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="RPC Capacity" metrics="rpc_capacity_num,grpc_active_conn_num" labels="Capacity,gRPC connections"></anycable-metrics-chart>
+
+        <h2>Errors &amp; Auth</h2>
+        <anycable-metrics-chart heading="Failed Authentications" type="bar" mode="delta" metrics="failed_auths_total" labels="Failed auths"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Disconnected Slow Clients" type="bar" mode="delta" metrics="disconnected_slow_clients_total" labels="Slow clients"></anycable-metrics-chart>
+
+        <h2>Memory &amp; Runtime</h2>
+        <anycable-metrics-chart heading="Memory Obtained from OS" format="bytes" metrics="mem_sys_bytes,heap_sys_bytes,stack_sys_bytes" labels="Total (sys),Heap (sys),Stack (sys)"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Heap Details" format="bytes" metrics="heap_alloc_total,heap_idle_bytes,heap_released_bytes" labels="Heap allocated,Heap idle,Heap released"></anycable-metrics-chart>
+        <anycable-metrics-chart heading="Goroutines" metrics="goroutines_num" labels="Goroutines"></anycable-metrics-chart>
+      </anycable-metrics>
+    </div>
+    <script type="module" src="/demo/metrics-mock.js"></script>
+
     <div style="width: 100%; height: 400px; padding: 1rem">
       <anycable-logs
         url="https://camp-cable-kjo0.fly.dev/_high_voltage_/events?identifier=logs"
