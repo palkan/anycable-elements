@@ -22,15 +22,18 @@ const toMs = (ts) => (ts < 1e12 ? ts * 1000 : ts);
  * Keeps a time-ordered buffer of metrics points and feeds it to the child
  * <anycable-metrics-chart> elements.
  *
- * Data is pushed via `ingest(message)`:
+ * With the `url` attribute, the element subscribes to the AnyCable admin
+ * metrics stream over SSE (like <anycable-logs>). Without it, push data
+ * via `ingest(message)`:
  *
- *   {type: "snapshot", interval: 5, meta: {<name>: {kind, desc}}, points: [{ts, values, deltas}]}
- *   {type: "point", point: {ts, values, deltas}}
+ *   {type: "snapshot", interval: 5, ts: [...], metrics: {<name>: {kind, desc, values: [...]}}}
+ *   {type: "point", ts, values: {<name>: value}}
  *
- * `values` holds current values (counter totals and gauges),
- * `deltas` holds per-interval counter changes.
- * A point can arrive both in a snapshot and as a broadcast; duplicates (by ts) are dropped.
+ * Values are absolute: gauge values and counter totals (charts compute rates).
+ * A point carries only the metrics that changed; others keep their last value.
+ * Points are merged by ts: a point with a known ts updates it.
  *
+ * @attr url - the SSE events URL (e.g., http://localhost:8080/_high_voltage_/events?identifier=metrics)
  * @attr window - the visible time window (e.g., "1h", "15m"); default: 1h
  * @attr hover - "shared" (default) syncs the hover across charts, "local" does not
  * @attr status - connection status: loading, connected, reconnecting, error
@@ -38,6 +41,7 @@ const toMs = (ts) => (ts < 1e12 ? ts * 1000 : ts);
 export class AnyCableMetricsElement extends LitElement {
   static get properties() {
     return {
+      url: { type: String },
       timeWindow: { type: String, attribute: "window" },
       hover: { type: String },
       status: { type: String },
@@ -61,6 +65,9 @@ export class AnyCableMetricsElement extends LitElement {
     this._version = 0;
     this._hoverTs = null;
 
+    this._source = null;
+    this._sourceUrl = null;
+
     this._frame = this._frame.bind(this);
   }
 
@@ -77,11 +84,89 @@ export class AnyCableMetricsElement extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._raf = requestAnimationFrame(this._frame);
+    this._syncSource();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     cancelAnimationFrame(this._raf);
+    this._syncSource();
+  }
+
+  // Opens, closes, or re-opens the event source to match `url` and the DOM state
+  _syncSource() {
+    const url = (this.isConnected && this.url) || null;
+    if (url === this._sourceUrl) return;
+
+    this._source?.close();
+    this._source = null;
+    this._sourceUrl = url;
+
+    if (url) this._openSource(url);
+  }
+
+  _openSource(url) {
+    const source = (this._source = new EventSource(url));
+    let opened = false;
+
+    this.status = "loading";
+    this.error = null;
+
+    source.onopen = () => {
+      opened = true;
+      this.status = "connected";
+      this.error = null;
+    };
+
+    // EventSource reconnects by itself unless the connection is closed for good
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) {
+        this.status = "error";
+        this.error = new Error("failed to connect to the event source");
+      } else if (opened) {
+        this.status = "reconnecting";
+      }
+    };
+
+    source.addEventListener("reject_subscription", () => {
+      this.status = "error";
+      this.error = new Error("subscription rejected: is the metrics stream enabled?");
+      source.close();
+    });
+
+    source.addEventListener("disconnect", (e) => {
+      let reason;
+      try {
+        ({ reason } = JSON.parse(e.data));
+      } catch {
+        // no reason provided
+      }
+      this.status = "reconnecting";
+      this.error = new Error(
+        `connection closed by server${reason ? `: ${reason}` : ""}`
+      );
+    });
+
+    source.addEventListener("ping", () => this._animateStatus());
+
+    source.onmessage = (e) => this._handleData(e.data);
+  }
+
+  _handleData(data) {
+    let msg;
+    try {
+      msg = JSON.parse(data);
+      // The snapshot may come wrapped into a reply: {identifier, message}
+      if (msg && msg.identifier && msg.message !== undefined) {
+        msg = msg.message;
+        if (typeof msg === "string") msg = JSON.parse(msg);
+      }
+    } catch (e) {
+      console.error("[anycable-metrics] failed to parse message", e, data);
+      return;
+    }
+
+    this.ingest(msg);
   }
 
   register(chart) {
@@ -98,28 +183,66 @@ export class AnyCableMetricsElement extends LitElement {
   ingest(msg) {
     if (!msg || typeof msg !== "object") return;
 
-    let added = false;
-
     if (msg.type === "snapshot") {
-      if (msg.interval) this.intervalMs = msg.interval * 1000;
-      for (const name in msg.meta || {}) {
-        this.meta.set(name, msg.meta[name]);
-      }
-      for (const point of msg.points || []) {
-        if (this._addPoint(point)) added = true;
-      }
-      // Republish even if all points are duplicates: meta may have changed
-      added = true;
+      this._ingestSnapshot(msg);
     } else if (msg.type === "point") {
-      added = this._addPoint(msg.point);
-      if (added) this._trackLag(toMs(msg.point.ts));
+      if (msg.ts == null) return;
+      this._mergePoint(toMs(msg.ts), msg.values || {}, true);
+      this._trackLag(toMs(msg.ts));
       this._animateStatus();
+    } else {
+      return;
     }
-
-    if (!added) return;
 
     this._trim();
     this._publish();
+  }
+
+  // Columnar snapshot: ts[] plus metrics[name].values[] aligned by index
+  _ingestSnapshot(msg) {
+    if (msg.interval) this.intervalMs = msg.interval * 1000;
+
+    const metrics = msg.metrics || {};
+    const names = Object.keys(metrics);
+
+    for (const name of names) {
+      const { kind, desc } = metrics[name];
+      this.meta.set(name, { kind, desc });
+    }
+
+    (msg.ts || []).forEach((ts, i) => {
+      const values = {};
+      for (const name of names) {
+        const v = metrics[name].values?.[i];
+        if (v != null) values[name] = v;
+      }
+      this._mergePoint(toMs(ts), values, false);
+    });
+  }
+
+  // Adds a point or updates an existing one with the same ts.
+  // With carryForward, a new point starts from the previous point's values
+  // (points carry only the metrics that changed)
+  _mergePoint(ts, values, carryForward) {
+    const points = this.points;
+
+    let lo = 0;
+    let hi = points.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid].ts < ts) lo = mid + 1;
+      else hi = mid;
+    }
+
+    const existing = points[lo];
+    if (existing && existing.ts === ts) {
+      Object.assign(existing.values, values);
+      return;
+    }
+
+    const prev = points[lo - 1];
+    const base = carryForward && prev ? prev.values : {};
+    points.splice(lo, 0, { ts, values: { ...base, ...values } });
   }
 
   setHover(ts, source) {
@@ -136,38 +259,6 @@ export class AnyCableMetricsElement extends LitElement {
     for (const chart of this.charts) {
       chart.hover = ts == null ? null : { ts, own: chart === source };
     }
-  }
-
-  _addPoint(raw) {
-    if (!raw || raw.ts == null) return false;
-
-    const point = {
-      ts: toMs(raw.ts),
-      values: raw.values || {},
-      deltas: raw.deltas || {},
-    };
-
-    const points = this.points;
-    const last = points[points.length - 1];
-
-    if (!last || last.ts < point.ts) {
-      points.push(point);
-      return true;
-    }
-
-    // Out-of-order point (e.g., snapshot after reconnect): insert or skip duplicate
-    let lo = 0;
-    let hi = points.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (points[mid].ts < point.ts) lo = mid + 1;
-      else hi = mid;
-    }
-
-    if (points[lo] && points[lo].ts === point.ts) return false;
-
-    points.splice(lo, 0, point);
-    return true;
   }
 
   // Smooth the difference between the client clock and the server timestamps
@@ -286,6 +377,8 @@ export class AnyCableMetricsElement extends LitElement {
   }
 
   updated(changed) {
+    if (changed.has("url")) this._syncSource();
+
     if (changed.has("timeWindow") && changed.get("timeWindow") !== undefined) {
       this._trim();
       this._publish();

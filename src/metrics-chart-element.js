@@ -251,30 +251,47 @@ export class AnyCableMetricsChartElement extends LitElement {
       return;
     }
 
-    const intervalSec = data.intervalMs / 1000;
+    // Skip metrics the server doesn't report (colors stay bound to positions)
+    const last = data.points[data.points.length - 1];
+    if (data.meta.size || last) {
+      this._series = this._series.filter(
+        (s) => data.meta.has(s.name) || (last && s.name in last.values)
+      );
+    }
 
-    this._rows = data.points.map((point) => ({
+    // Counters come as totals: compute changes from the previous point.
+    // No change across a gap (we can't tell when it happened)
+    const gapMs = data.intervalMs * 2.5;
+    const points = data.points;
+
+    this._rows = points.map((point, i) => ({
       ts: point.ts,
       values: this._series.map((s) => {
-        if (s.kind === "counter" && this.mode !== "total") {
-          const v = point.deltas[s.name];
-          if (v == null) return null;
-          return this.mode === "delta" ? v : v / intervalSec;
-        }
-        return point.values[s.name] ?? null;
+        const v = point.values[s.name];
+        if (v == null) return null;
+        if (s.kind !== "counter" || this.mode === "total") return v;
+
+        const prev = points[i - 1];
+        const p = prev?.values[s.name];
+        if (p == null || point.ts - prev.ts > gapMs) return null;
+
+        // A smaller total means the counter was reset (e.g., a server restart)
+        const delta = v >= p ? v - p : v;
+        return this.mode === "delta"
+          ? delta
+          : delta / ((point.ts - prev.ts) / 1000);
       }),
     }));
 
     if (this._t0 == null && this._rows.length) this._t0 = this._rows[0].ts;
   }
 
-  // Kind comes from meta; fall back to the data shape (only counters have deltas)
+  // Kind comes from meta. A metric registered after the snapshot has no meta
+  // until the next snapshot: guess by the naming convention (counters end with _total)
   _kindOf(name, data) {
-    const kind = data.meta.get(name)?.kind;
-    if (kind) return kind;
-    const point = data.points[data.points.length - 1];
-    if (!point) return undefined;
-    return name in point.deltas ? "counter" : "gauge";
+    return (
+      data.meta.get(name)?.kind ?? (name.endsWith("_total") ? "counter" : "gauge")
+    );
   }
 
   get _isStacked() {
@@ -580,22 +597,40 @@ export class AnyCableMetricsChartElement extends LitElement {
     </ul>`;
   }
 
-  // Stat: the latest value(s), like a Grafana stat panel
+  // Max value of a series within the visible window: {v, ts}
+  _windowMax(si) {
+    const from = this._viewNow - (this.data?.windowMs ?? 0);
+    let max = null;
+    for (const row of this._rows) {
+      const v = row.values[si];
+      if (row.ts < from || v == null) continue;
+      if (!max || v > max.v) max = { v, ts: row.ts };
+    }
+    return max;
+  }
+
+  // Stat: the latest value(s) and the max within the window
   _renderNumber() {
     const row = this._rows[this._rows.length - 1];
     const many = this._series.length > 1;
 
     return html`<div class="values">
-      ${this._series.map(
-        (s, si) => html`<div class="value">
+      ${this._series.map((s, si) => {
+        const max = this._windowMax(si);
+        return html`<div class="value">
           <strong>${this._fmt(row?.values[si], s)}</strong>
+          ${max
+            ? html`<small title="Max at ${secondsFormat.format(max.ts)}"
+                >max ${this._fmt(max.v, s)}</small
+              >`
+            : nothing}
           ${many
             ? html`<span title=${ifDefined(s.desc)}
                 ><i class="key" style="background:${s.color}"></i>${s.label}</span
               >`
             : nothing}
-        </div>`
-      )}
+        </div>`;
+      })}
     </div>`;
   }
 
@@ -698,8 +733,9 @@ export class AnyCableMetricsChartElement extends LitElement {
 
   render() {
     const g = this._geometry();
-    const hasData = this._rows.length > 0;
+    const hasData = this._rows.length > 0 && this._series.length > 0;
     const ready = g.width > 0 && g.plotW > 0 && hasData;
+    const emptyText = this.data?.points.length ? "No data" : "Waiting for data…";
     const hoverIdx = this._hoverIndex();
 
     this._geom = ready ? g : null;
@@ -710,7 +746,7 @@ export class AnyCableMetricsChartElement extends LitElement {
       <div class="plot">
         ${ready
           ? this._renderSVG(g, hoverIdx)
-          : html`<div class="empty">${hasData ? "" : "Waiting for data…"}</div>`}
+          : html`<div class="empty">${hasData ? "" : emptyText}</div>`}
         ${ready ? this._renderTooltip(hoverIdx) : nothing}
       </div>
       ${this._renderLegend()}
@@ -876,6 +912,13 @@ export class AnyCableMetricsChartElement extends LitElement {
           line-height: 1.1;
           letter-spacing: -0.01em;
           font-variant-numeric: tabular-nums;
+        }
+
+        .value small {
+          color: var(--_muted-fg);
+          font-size: 0.75rem;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
         }
 
         .value span {

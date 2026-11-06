@@ -1,7 +1,10 @@
 {
   "name": "anycable-elements",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "main": "src/index.js",
+  "files": [
+    "src"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.js",

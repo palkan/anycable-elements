@@ -1,5 +1,5 @@
 // Fake metrics source for the <anycable-metrics> demo.
-// Emits messages in the same shape as the AnyCable server.
+// Emits messages in the same shape as the AnyCable server (the `message` part of each frame).
 // Metrics: etc/grafana/dashboards/anycable.json in anycable-go.
 
 const INTERVAL = 5; // seconds
@@ -132,9 +132,26 @@ function sample(tsMs) {
       heap_released_bytes: round(heapSys * 0.2 + rnd(3e6)),
       goroutines_num: round(clients * 2 + 200 + rnd(40)),
     },
-    deltas,
   };
 }
+
+// Columnar snapshot: ts[] plus per-metric values[] aligned by index
+const snapshot = (points) => {
+  const metrics = {};
+  for (const name in META) {
+    metrics[name] = { ...META[name], values: points.map((p) => p.values[name] ?? 0) };
+  }
+  return { type: "snapshot", interval: INTERVAL, ts: points.map((p) => p.ts), metrics };
+};
+
+// Sparse point: only the metrics that changed since the previous sample
+const changed = (prev, values) => {
+  const result = {};
+  for (const name in values) {
+    if (!prev || prev[name] !== values[name]) result[name] = values[name];
+  }
+  return result;
+};
 
 await customElements.whenDefined("anycable-metrics");
 
@@ -150,27 +167,28 @@ for (const el of document.querySelectorAll("anycable-metrics")) {
     points.push(sample(ts));
   }
 
-  const snapshot = (pts) => ({
-    type: "snapshot",
-    interval: INTERVAL,
-    meta: META,
-    points: pts,
-  });
+  let prevValues = points[points.length - 1].values;
+  let fullPoints = 2;
 
   // Pretend we're connecting
   setTimeout(() => {
     el.status = "connected";
     el.ingest(snapshot(points));
-    // The last snapshot point can also arrive as a broadcast: must be dropped
-    el.ingest({ type: "point", point: points[points.length - 1] });
+    // The first points after subscribing are full; the last snapshot ts may repeat
+    const last = points[points.length - 1];
+    el.ingest({ type: "point", ts: last.ts, values: last.values });
   }, 500);
 
   let next = now + stepMs;
   setInterval(() => {
-    el.ingest({ type: "point", point: sample(next) });
+    const { ts, values } = sample(next);
+    const sent = fullPoints > 0 ? values : changed(prevValues, values);
+    fullPoints--;
+    prevValues = values;
+    el.ingest({ type: "point", ts, values: sent });
     next += stepMs;
   }, stepMs);
 
-  // Re-send part of the history (as after a reconnect): duplicates must be dropped
+  // Re-send part of the history (as after a reconnect): points merge by ts
   setTimeout(() => el.ingest(snapshot(points.slice(-24))), 10_000);
 }
